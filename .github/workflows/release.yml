@@ -16,8 +16,13 @@ jobs:
     steps:
     - name: Checkout Code
       uses: actions/checkout@v3
+      with:
+        fetch-depth: 0  # Fetch the entire Git history, including tags
 
-    - name: Extract Version from Git
+    - name: Fetch all tags
+      run: git fetch --tags
+
+    - name: Extract Full Version
       id: get_version
       run: |
         echo "version=$(git describe --tags --always --dirty)" >> $GITHUB_ENV
