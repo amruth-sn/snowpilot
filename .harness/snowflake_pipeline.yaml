@@ -1,0 +1,174 @@
+pipeline:
+  name: snowflake pipeline
+  identifier: snowflake_pipeline
+  projectIdentifier: snowflake_harness_automation
+  orgIdentifier: default
+  tags: {}
+  stages:
+    - stage:
+        name: Code Checkout
+        identifier: Code_Checkout
+        description: ""
+        type: Custom
+        spec:
+          execution:
+            steps:
+              - step:
+                  type: ShellScript
+                  name: Git Checkout
+                  identifier: git_checkout
+                  spec:
+                    shell: Bash
+                    executionTarget: {}
+                    source:
+                      type: Inline
+                      spec:
+                        script: |-
+                          rm -rf automation-snowflake-harness
+                          git clone https://github.com/amruth-sn/snowpark.git
+                          cd snowpark
+                          echo "Contents of cloned repository:"
+                          ls -R
+                    environmentVariables: []
+                    outputVariables: []
+                  timeout: 10m
+        tags: {}
+    - stage:
+        name: Liquibase Migration
+        identifier: Liquibase_Migration
+        description: ""
+        type: Custom
+        spec:
+          execution:
+            steps:
+              - step:
+                  type: ShellScript
+                  name: Liquibase Run
+                  identifier: liquibase_run
+                  spec:
+                    shell: Bash
+                    executionTarget: {}
+                    source:
+                      type: Inline
+                      spec:
+                        script: |-
+                          cd automation-snowflake-harness
+                          python main.py
+                          cd migrations
+
+                          # Load environment variables from Harness secrets
+                          export SNOWFLAKE_ACCOUNT=<+secrets.getValue("SNOWFLAKE_ACCOUNT")>
+                          export SNOWFLAKE_USER=<+secrets.getValue("SNOWFLAKE_USER")>
+                          export SNOWFLAKE_PASSWORD=<+secrets.getValue("SNOWFLAKE_PASSWORD")>
+                          export SNOWFLAKE_WAREHOUSE=<+secrets.getValue("SNOWFLAKE_WAREHOUSE")>
+                          export SNOWFLAKE_DATABASE=<+secrets.getValue("SNOWFLAKE_DATABASE")>
+                          export SNOWFLAKE_SCHEMA=<+secrets.getValue("SNOWFLAKE_SCHEMA")>
+
+                          # Find the most recent changelog file
+                          latest_changelog=$(find . -name 'generated_changelog_*.yaml' | sort -t'_' -k3,3nr -k4,4nr | head -n 1)
+                          echo "Using changelog file: $latest_changelog"
+
+                          # Run Liquibase using the latest changelog
+                          liquibase \
+                          --classpath=/usr/local/lib/snowflake-jdbc.jar \
+                          --changeLogFile=$latest_changelog \
+                          --driver=net.snowflake.client.jdbc.SnowflakeDriver \
+                          --url="jdbc:snowflake://$SNOWFLAKE_ACCOUNT.snowflakecomputing.com/?db=$SNOWFLAKE_DATABASE&schema=$SNOWFLAKE_SCHEMA" \
+                          --username=$SNOWFLAKE_USER \
+                          --password=$SNOWFLAKE_PASSWORD \
+                          update
+              - step:
+                  type: ShellScript
+                  name: Liquibase Release Lock
+                  identifier: liquibase_release_lock
+                  spec:
+                    shell: Bash
+                    executionTarget: {}
+                    source:
+                      type: Inline
+                      spec:
+                        script: |-
+                          # Load environment variables from Harness secrets
+                          export SNOWFLAKE_ACCOUNT=<+secrets.getValue("SNOWFLAKE_ACCOUNT")>
+                          export SNOWFLAKE_USER=<+secrets.getValue("SNOWFLAKE_USER")>
+                          export SNOWFLAKE_PASSWORD=<+secrets.getValue("SNOWFLAKE_PASSWORD")>
+                          export SNOWFLAKE_WAREHOUSE=<+secrets.getValue("SNOWFLAKE_WAREHOUSE")>
+                          export SNOWFLAKE_DATABASE=<+secrets.getValue("SNOWFLAKE_DATABASE")>
+                          export SNOWFLAKE_SCHEMA=<+secrets.getValue("SNOWFLAKE_SCHEMA")>
+
+                          # Always release the lock after Liquibase operation
+                          liquibase \
+                          --classpath=/usr/local/lib/snowflake-jdbc.jar \
+                          --driver=net.snowflake.client.jdbc.SnowflakeDriver \
+                          --url="jdbc:snowflake://$SNOWFLAKE_ACCOUNT.snowflakecomputing.com/?db=$SNOWFLAKE_DATABASE&schema=$SNOWFLAKE_SCHEMA" \
+                          --username=$SNOWFLAKE_USER \
+                          --password=$SNOWFLAKE_PASSWORD \
+                          releaseLocks
+                    environmentVariables: []
+                    outputVariables: []
+                    when:
+                      condition: true
+                      stageStatus: always
+                  timeout: 10m
+        tags: {}
+    - stage:
+        name: Deploy to Snowflake
+        identifier: Deploy_to_Snowflake
+        description: ""
+        type: Custom
+        spec:
+          execution:
+            steps:
+              - step:
+                  type: ShellScript
+                  name: Snowflake Deploy
+                  identifier: snowflake_deploy
+                  spec:
+                    shell: Bash
+                    executionTarget: {}
+                    source:
+                      type: Inline
+                      spec:
+                        script: |-
+                          #cd automation-snowflake-harness/liquibase
+                          #snowsql -f deploy.sql
+                    environmentVariables: []
+                    outputVariables: []
+                  timeout: 10m
+        tags: {}
+    - stage:
+        name: Testing
+        identifier: Testing
+        description: ""
+        type: Custom
+        spec:
+          execution:
+            steps:
+              - step:
+                  type: ShellScript
+                  name: Run Tests
+                  identifier: run_tests
+                  spec:
+                    shell: Bash
+                    executionTarget: {}
+                    source:
+                      type: Inline
+                      spec:
+                        script: |-
+                          cd automation-snowflake-harness/tests
+                          python test_migration.py
+                    environmentVariables: []
+                    outputVariables: []
+                  timeout: 10m
+        tags: {}
+  notificationRules:
+    - name: Test Rule
+      identifier: Test_Rule
+      pipelineEvents:
+        - type: AllEvents
+      notificationMethod:
+        type: Slack
+        spec:
+          userGroups: []
+          webhookUrl: <+secrets.getValue("slack_webhook_url")>
+      enabled: true

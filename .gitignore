@@ -1,0 +1,8 @@
+
+.venv
+
+.env
+
+harness_delegate_deployment/
+
+liquibase.properties
