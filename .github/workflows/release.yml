@@ -1,0 +1,32 @@
+name: Create Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Extract Version from Git
+      id: get_version
+      run: |
+        echo "version=$(git describe --tags --always --dirty)" >> $GITHUB_ENV
+
+    - name: Create Release
+      uses: actions/create-release@v1
+      with:
+        tag_name: ${{ env.version }}
+        release_name: Release ${{ env.version }}
+        body: |
+          Automated release from GitHub Actions.
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
