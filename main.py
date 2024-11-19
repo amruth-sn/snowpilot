@@ -20,7 +20,7 @@ def create_harness_secret(api_key, secret_name, secret_value, org_id, project_id
     response.raise_for_status()
     return response.json()
 
-def create_pipeline(api_key, pipeline_yaml, org_id, project_id):
+def create_pipeline(api_key, pipeline_yaml, org_id, project_id, acc_id):
     url = f"https://app.harness.io/gateway/api/pipelines/v2?accountIdentifier={acc_id}&orgIdentifier={org_id}&projectIdentifier={project_id}"
     headers = {
         "x-api-key": api_key,
@@ -43,6 +43,7 @@ def trigger_pipeline(api_key, pipeline_id, org_id, project_id):
 def main():
     parser = argparse.ArgumentParser(description="Setup and Trigger Harness Pipeline for Snowflake Migrations")
     parser.add_argument('--api-key', required=True, help='Harness API Key')
+    parser.add_argument('--acc-id', required=True, help='Harness Account Identifier')
     parser.add_argument('--org-id', required=True, help='Harness Organization Identifier')
     parser.add_argument('--project-id', required=True, help='Harness Project Identifier')
     parser.add_argument('--repo-url', required=True, help='User Git Repository URL')
@@ -87,7 +88,8 @@ def main():
         api_key=args.api_key,
         pipeline_yaml=pipeline_yaml,
         org_id=args.org_id,
-        project_id=args.project_id
+        project_id=args.project_id,
+        acc_id=args.acc_id
     )
     pipeline_id = pipeline.get('identifier')
     print(f"Pipeline created with ID: {pipeline_id}")
