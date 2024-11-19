@@ -24,10 +24,14 @@ pipeline:
                       type: Inline
                       spec:
                         script: |-
-                          rm -rf automation-snowflake-harness
+                          rm -rf user_repo
+                          rm -rf snowpark
+
+                          git clone ${REPO_URL} user_repo
+
                           git clone https://github.com/amruth-sn/snowpark.git
-                          cd snowpark
-                          echo "Contents of cloned repository:"
+
+                          echo "Repositories cloned:"
                           ls -R
                     environmentVariables: []
                     outputVariables: []
@@ -52,17 +56,19 @@ pipeline:
                       type: Inline
                       spec:
                         script: |-
-                          cd automation-snowflake-harness
-                          python main.py
-                          cd migrations
+                          cd snowpark
+                          python main.py --migrations-dir ../user_repo/migrations --output-dir ../user_repo/migrations
+                          
 
-                          # Load environment variables from Harness secrets
+                          # Load credentials from Harness secrets
                           export SNOWFLAKE_ACCOUNT=<+secrets.getValue("SNOWFLAKE_ACCOUNT")>
                           export SNOWFLAKE_USER=<+secrets.getValue("SNOWFLAKE_USER")>
                           export SNOWFLAKE_PASSWORD=<+secrets.getValue("SNOWFLAKE_PASSWORD")>
                           export SNOWFLAKE_WAREHOUSE=<+secrets.getValue("SNOWFLAKE_WAREHOUSE")>
                           export SNOWFLAKE_DATABASE=<+secrets.getValue("SNOWFLAKE_DATABASE")>
                           export SNOWFLAKE_SCHEMA=<+secrets.getValue("SNOWFLAKE_SCHEMA")>
+
+                          cd ../user_repo/migrations
 
                           # Find the most recent changelog file
                           latest_changelog=$(find . -name 'generated_changelog_*.yaml' | sort -t'_' -k3,3nr -k4,4nr | head -n 1)
@@ -88,7 +94,7 @@ pipeline:
                       type: Inline
                       spec:
                         script: |-
-                          # Load environment variables from Harness secrets
+                          # Load credentials from Harness secrets
                           export SNOWFLAKE_ACCOUNT=<+secrets.getValue("SNOWFLAKE_ACCOUNT")>
                           export SNOWFLAKE_USER=<+secrets.getValue("SNOWFLAKE_USER")>
                           export SNOWFLAKE_PASSWORD=<+secrets.getValue("SNOWFLAKE_PASSWORD")>
@@ -130,7 +136,6 @@ pipeline:
                       type: Inline
                       spec:
                         script: |-
-                          #cd automation-snowflake-harness/liquibase
                           #snowsql -f deploy.sql
                     environmentVariables: []
                     outputVariables: []
@@ -155,7 +160,7 @@ pipeline:
                       type: Inline
                       spec:
                         script: |-
-                          cd automation-snowflake-harness/tests
+                          cd snowpark/tests
                           python test_migration.py
                     environmentVariables: []
                     outputVariables: []

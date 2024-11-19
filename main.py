@@ -1,74 +1,106 @@
-import logging
-import os
-from datetime import datetime
-from scripts.snowflake_manager import create_schema
-from scripts.changelog_generator import create_dynamic_changelog
-from scripts.migration_manager import MigrationManager
-from config.settings import SNOWFLAKE_CREDENTIALS
+# File: main.py
+
+import argparse
+import requests
 import yaml
+import os
 
-# Create logs directory if it doesn't exist
-if not os.path.exists('logs'):
-    os.makedirs('logs')
+def create_harness_secret(api_key, secret_name, secret_value, org_id, project_id):
+    url = f"https://app.harness.io/gateway/api/v1/secret?orgIdentifier={org_id}&projectIdentifier={project_id}"
+    headers = {
+        "x-api-key": api_key,
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "name": secret_name,
+        "type": "SecretText",
+        "value": secret_value
+    }
+    response = requests.post(url, json=payload, headers=headers)
+    response.raise_for_status()
+    return response.json()
 
-# Configure logging
-logging.basicConfig(
-    filename=f'logs/migration_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log',
-    filemode='a',
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+def create_pipeline(api_key, pipeline_yaml, org_id, project_id):
+    url = f"https://app.harness.io/gateway/api/pipelines/v2?accountIdentifier={acc_id}&orgIdentifier={org_id}&projectIdentifier={project_id}"
+    headers = {
+        "x-api-key": api_key,
+        "Content-Type": "application/yaml"
+    }
+    response = requests.post(url, data=pipeline_yaml, headers=headers)
+    response.raise_for_status()
+    return response.json()
 
-def validate_changelog(changelog_file):
-    with open(changelog_file, 'r') as file:
-        changelog = yaml.safe_load(file)
-    
-    ids = {}
-    for changeset in changelog['databaseChangeLog']:
-        changeset_id = changeset['changeSet']['id']
-        if changeset_id in ids:
-            raise ValueError(f"Duplicate changeset ID found: {changeset_id}\nOriginal: {ids[changeset_id]}\nDuplicate: {changeset}")
-        ids[changeset_id] = changeset
-    
-    logging.info(f"Changelog validation successful. Total changesets: {len(ids)}")
-    logging.info("Changeset IDs:")
-    for changeset_id in ids:
-        logging.info(f"  {changeset_id}")
+def trigger_pipeline(api_key, pipeline_id, org_id, project_id):
+    url = f"https://app.harness.io/gateway/api/v1/pipelines/{pipeline_id}/execute?orgIdentifier={org_id}&projectIdentifier={project_id}"
+    headers = {
+        "x-api-key": api_key,
+        "Content-Type": "application/json"
+    }
+    response = requests.post(url, headers=headers)
+    response.raise_for_status()
+    return response.json()
 
 def main():
-    try:
-        logging.info('Starting the migration process.')
-        
-        # Log Snowflake credentials (with password masked)
-        masked_credentials = SNOWFLAKE_CREDENTIALS.copy()
-        masked_credentials['password'] = '********'
-        logging.info(f"Snowflake Credentials: {masked_credentials}")
-        
-        # Create the schema
-        create_schema(SNOWFLAKE_CREDENTIALS['schema'])
-        
-        # Generate dynamic changelog
-        changelog_file = f'migrations/generated_changelog_{datetime.now().strftime("%Y%m%d_%H%M%S")}.yaml'
-        
-        # Delete existing changelog file if it exists
-        if os.path.exists(changelog_file):
-            os.remove(changelog_file)
-            logging.info(f"Deleted existing changelog file: {changelog_file}")
-        
-        create_dynamic_changelog(changelog_file)
-        
-        # Validate the generated changelog
-        validate_changelog(changelog_file)
-        
-        # Initialize MigrationManager and run migration
-        migration_manager = MigrationManager()
-        migration_manager.run_migration(changelog_file)
-        
-        logging.info('Migration process completed successfully.')
-    except ValueError as ve:
-        logging.error(f'Validation error: {str(ve)}')
-    except Exception as e:
-        logging.error(f'Migration process failed: {str(e)}', exc_info=True)
+    parser = argparse.ArgumentParser(description="Setup and Trigger Harness Pipeline for Snowflake Migrations")
+    parser.add_argument('--api-key', required=True, help='Harness API Key')
+    parser.add_argument('--org-id', required=True, help='Harness Organization Identifier')
+    parser.add_argument('--project-id', required=True, help='Harness Project Identifier')
+    parser.add_argument('--repo-url', required=True, help='User Git Repository URL')
+    parser.add_argument('--snowflake-account', required=True, help='Snowflake Account')
+    parser.add_argument('--snowflake-user', required=True, help='Snowflake User')
+    parser.add_argument('--snowflake-password', required=True, help='Snowflake Password')
+    parser.add_argument('--snowflake-warehouse', required=True, help='Snowflake Warehouse')
+    parser.add_argument('--snowflake-database', required=True, help='Snowflake Database')
+    parser.add_argument('--snowflake-schema', default='PUBLIC', help='Snowflake Schema (optional)')
+    args = parser.parse_args()
 
-if __name__ == '__main__':
+    # Step 1: Create Secrets in Harness
+    secrets = {
+        'SNOWFLAKE_ACCOUNT': args.snowflake_account,
+        'SNOWFLAKE_USER': args.snowflake_user,
+        'SNOWFLAKE_PASSWORD': args.snowflake_password,
+        'SNOWFLAKE_WAREHOUSE': args.snowflake_warehouse,
+        'SNOWFLAKE_DATABASE': args.snowflake_database,
+        'SNOWFLAKE_SCHEMA': args.snowflake_schema,
+        'REPO_URL': args.repo_url
+    }
+
+    for secret_name, secret_value in secrets.items():
+        print(f"Creating secret: {secret_name}")
+        create_harness_secret(
+            api_key=args.api_key,
+            secret_name=secret_name,
+            secret_value=secret_value,
+            org_id=args.org_id,
+            project_id=args.project_id
+        )
+
+    # Step 2: Prepare and Create Pipeline
+    with open('pipeline.yaml', 'r') as file:
+        pipeline_yaml = file.read()
+
+    # Optionally replace placeholders if needed
+    pipeline_yaml = pipeline_yaml.replace('${REPO_URL}', args.repo_url)
+
+    print("Creating pipeline in Harness...")
+    pipeline = create_pipeline(
+        api_key=args.api_key,
+        pipeline_yaml=pipeline_yaml,
+        org_id=args.org_id,
+        project_id=args.project_id
+    )
+    pipeline_id = pipeline.get('identifier')
+    print(f"Pipeline created with ID: {pipeline_id}")
+
+    # Step 3: Trigger the Pipeline
+    print("Triggering the pipeline...")
+    execution = trigger_pipeline(
+        api_key=args.api_key,
+        pipeline_id=pipeline_id,
+        org_id=args.org_id,
+        project_id=args.project_id
+    )
+    print(f"Pipeline execution started: {execution}")
+
+if __name__ == "__main__":
     main()
