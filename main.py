@@ -113,7 +113,7 @@ trigger:
     return response.json()
 
 def main():
-    parser = argparse.ArgumentParser(description="Setup and Trigger Harness Pipeline for Snowflake Migrations")
+    parser = argparse.ArgumentParser(description="SnowPilot: Setup and trigger your own Harness pipeline for Snowflake migrations")
     parser.add_argument('--api-key', required=True, help='Harness API Key')
     parser.add_argument('--acc-id', required=True, help='Harness Account Identifier')
     parser.add_argument('--org-id', required=True, help='Harness Organization Identifier')
