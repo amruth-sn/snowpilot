@@ -57,7 +57,7 @@ pipeline:
                       spec:
                         script: |-
                           cd snowpark
-                          python main.py --migrations-dir ../user_repo/migrations --output-dir ../user_repo/migrations
+                          python pipeline_script.py --migrations-dir ../user_repo/migrations --output-dir ../user_repo/migrations
                           
                           # Load credentials from Harness secrets
                           export SNOWFLAKE_ACCOUNT=<+secrets.getValue("SNOWFLAKE_ACCOUNT")>

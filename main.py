@@ -1,9 +1,9 @@
 # File: main.py
 
-import argparse
+from datetime import time
+import yaml
 import requests
-import os
-import json
+import sys
 
 def create_harness_secret(api_key, secret_name, secret_value, org_id, project_id, acc_id):
     url = f"https://app.harness.io/gateway/ng/api/v2/secrets/text?accountIdentifier={acc_id}"
@@ -112,22 +112,56 @@ trigger:
     response.raise_for_status()
     return response.json()
 
-def main():
-    parser = argparse.ArgumentParser(description="SnowPilot: Setup and trigger your own Harness pipeline for Snowflake migrations")
-    parser.add_argument('--api-key', required=True, help='Harness API Key')
-    parser.add_argument('--acc-id', required=True, help='Harness Account Identifier')
-    parser.add_argument('--org-id', required=True, help='Harness Organization Identifier')
-    parser.add_argument('--project-id', required=True, help='Harness Project Identifier')
-    parser.add_argument('--connector-name', required=True, help='Name for the Git Connector')
-    parser.add_argument('--repo-url', required=True, help='User Git Repository URL')
-    parser.add_argument('--snowflake-account', required=True, help='Snowflake Account')
-    parser.add_argument('--snowflake-user', required=True, help='Snowflake User')
-    parser.add_argument('--snowflake-password', required=True, help='Snowflake Password')
-    parser.add_argument('--snowflake-warehouse', required=True, help='Snowflake Warehouse')
-    parser.add_argument('--snowflake-database', required=True, help='Snowflake Database')
-    parser.add_argument('--snowflake-schema', default='PUBLIC', help='Snowflake Schema (optional)')
-    args = parser.parse_args()
+def load_credentials():
+    try:
+        with open('credentials.yaml', 'r') as file:
+            return yaml.safe_load(file)
+    except FileNotFoundError:
+        print("Error: credentials.yaml file not found")
+        sys.exit(1)
+    except yaml.YAMLError as e:
+        print(f"Error parsing credentials.yaml: {e}")
+        sys.exit(1)
 
+def validate_credentials(creds):
+    required_harness = ['api_key', 'account_id', 'org_id', 'project_id', 'connector_name', 'repo_url']
+    required_snowflake = ['account', 'user', 'password', 'warehouse', 'database']
+    
+    missing = []
+    
+    for field in required_harness:
+        if field not in creds['harness']:
+            missing.append(f'harness.{field}')
+            
+    for field in required_snowflake:
+        if field not in creds['snowflake']:
+            missing.append(f'snowflake.{field}')
+            
+    if missing:
+        print("Error: Missing required credentials:")
+        print("\n".join(f"- {field}" for field in missing))
+        sys.exit(1)
+
+def main():
+    print("SnowPilot: Setup and trigger your own Harness pipeline for Snowflake migrations")
+    print("Please ensure you have entered your credentials into credentials.yaml...")
+    time.sleep(2)
+    creds = load_credentials()
+    validate_credentials(creds)
+    args = type('Args', (), {
+        'api_key': creds['harness']['api_key'],
+        'acc_id': creds['harness']['account_id'],
+        'org_id': creds['harness']['org_id'],
+        'project_id': creds['harness']['project_id'],
+        'connector_name': creds['harness']['connector_name'],
+        'repo_url': creds['harness']['repo_url'],
+        'snowflake_account': creds['snowflake']['account'],
+        'snowflake_user': creds['snowflake']['user'],
+        'snowflake_password': creds['snowflake']['password'],
+        'snowflake_warehouse': creds['snowflake']['warehouse'],
+        'snowflake_database': creds['snowflake']['database'],
+        'snowflake_schema': creds['snowflake'].get('schema', 'PUBLIC')
+    })()
     secrets = {
         'SNOWFLAKE_ACCOUNT': args.snowflake_account,
         'SNOWFLAKE_USER': args.snowflake_user,
